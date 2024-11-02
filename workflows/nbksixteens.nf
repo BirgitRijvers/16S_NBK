@@ -5,8 +5,13 @@
 */
 
 include { FASTQC                 } from '../modules/nf-core/fastqc/main'
+include { PORECHOP_PORECHOP } from '../modules/nf-core/porechop/porechop/main'
+include { NANOPLOT } from '../modules/nf-core/nanoplot/main'
+include { FILTLONG } from '../modules/nf-core/filtlong/main'
 include { MINIMAP2_INDEX } from '../modules/nf-core/minimap2/index/main'
 include { MINIMAP2_ALIGN   } from '../modules/nf-core/minimap2/align/main'
+include { SAMTOOLS_VIEW } from '../modules/nf-core/samtools/view/main'
+include { SAMTOOLS_FASTQ } from '../modules/nf-core/samtools/fastq/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
 include { paramsSummaryMap       } from 'plugin/nf-validation'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -48,6 +53,33 @@ workflow NBKSIXTEENS {
     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]})
     ch_versions = ch_versions.mix(FASTQC.out.versions.first())
 
+    //
+    // MODULE: Run Porechop
+    //
+    PORECHOP_PORECHOP (
+        ch_samplesheet
+    )
+    ch_versions = ch_versions.mix(PORECHOP_PORECHOP.out.versions)
+    ch_multiqc_files = ch_multiqc_files.mix(PORECHOP_PORECHOP.out.log.collect{it[1]})
+
+    //
+    // MODULE: Run filtlong
+    //
+    FILTLONG ( 
+        PORECHOP_PORECHOP.out.reads.map { meta, reads -> [ meta, [], reads ] } 
+    )
+    ch_versions = ch_versions.mix(FILTLONG.out.versions)
+    // ch_multiqc_files = ch_multiqc_files.mix(FILTLONG.out.log.collect{it[1]})
+
+    //
+    // MODULE: Run Nanoplot
+    //
+    NANOPLOT (
+        FILTLONG.out.reads
+    )
+    ch_versions = ch_versions.mix(NANOPLOT.out.versions)
+
+
     // Check if minimap2 index is provided
     if (!params.minimap2_index) {
         //
@@ -75,6 +107,26 @@ workflow NBKSIXTEENS {
         false,
         false
     )
+    ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions.first())
+    ch_host_reads = MINIMAP2_ALIGN.out.bam.map {meta,reads ->[meta,reads,[]]}
+
+    //
+    // MODULE: Run Samtools view to extract unmapped reads
+    //
+    SAMTOOLS_VIEW (
+        ch_host_reads,[[],[]],[]
+        )
+    ch_versions = ch_versions.mix(SAMTOOLS_VIEW.out.versions)
+
+    //
+    // MODULE: Run Samtools fastq to convert unmapped reads to FASTQ
+    //
+    SAMTOOLS_FASTQ (
+        SAMTOOLS_VIEW.out.bam, 
+        false 
+        )
+    ch_versions = ch_versions.mix(SAMTOOLS_FASTQ.out.versions)
+
 
     //
     // Collate and save software versions

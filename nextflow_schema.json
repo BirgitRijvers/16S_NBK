@@ -238,6 +238,18 @@
         },
         "minimap2_index": {
             "type": "string"
+        },
+        "qc_keeppercent": {
+            "type": "integer",
+            "default": 90
+        },
+        "qc_minlength": {
+            "type": "integer",
+            "default": 500
+        },
+        "qc_targetbases": {
+            "type": "integer",
+            "default": 1000000000
         }
     }
 }

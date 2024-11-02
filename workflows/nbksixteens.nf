@@ -5,11 +5,23 @@
 */
 
 include { FASTQC                 } from '../modules/nf-core/fastqc/main'
+include { MINIMAP2_INDEX } from '../modules/nf-core/minimap2/index/main'
+include { MINIMAP2_ALIGN   } from '../modules/nf-core/minimap2/align/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
 include { paramsSummaryMap       } from 'plugin/nf-validation'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_nbksixteens_pipeline'
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    VALIDATE PARAMS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+if(params.fasta){
+    ch_fasta = Channel.fromPath(params.fasta, checkIfExists: true).collect()
+        .map{ it -> [[id:it[0].getSimpleName()], it[0]]}
+}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -35,6 +47,34 @@ workflow NBKSIXTEENS {
     )
     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{it[1]})
     ch_versions = ch_versions.mix(FASTQC.out.versions.first())
+
+    // Check if minimap2 index is provided
+    if (!params.minimap2_index) {
+        //
+        // MODULE: Run Minimap2 Index
+        //
+        MINIMAP2_INDEX(
+            ch_fasta
+        )
+        ch_versions = ch_versions.mix(MINIMAP2_INDEX.out.versions)
+        ch_minimap2_index = MINIMAP2_INDEX.out.index
+    }
+    else {
+        // Use provided minimap2 index
+        ch_minimap2_index = Channel.value([[id:'input_genome_index'], params.minimap2_index])
+    }
+
+    //
+    // MODULE: Run Minimap2 Align
+    //
+    MINIMAP2_ALIGN(
+        ch_samplesheet,
+        ch_minimap2_index,
+        true,
+        "bai",
+        false,
+        false
+    )
 
     //
     // Collate and save software versions

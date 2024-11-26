@@ -12,6 +12,9 @@ include { MINIMAP2_INDEX } from '../modules/nf-core/minimap2/index/main'
 include { MINIMAP2_ALIGN   } from '../modules/nf-core/minimap2/align/main'
 include { SAMTOOLS_VIEW } from '../modules/nf-core/samtools/view/main'
 include { SAMTOOLS_FASTQ } from '../modules/nf-core/samtools/fastq/main'
+include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'
+include { KRAKENTOOLS_KREPORT2KRONA } from '../modules/nf-core/krakentools/kreport2krona/main'
+include { KRONA_KTIMPORTTEXT } from '../modules/nf-core/krona/ktimporttext/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
 include { paramsSummaryMap       } from 'plugin/nf-validation'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -61,14 +64,19 @@ workflow NBKSIXTEENS {
     )
     ch_versions = ch_versions.mix(PORECHOP_PORECHOP.out.versions)
     ch_multiqc_files = ch_multiqc_files.mix(PORECHOP_PORECHOP.out.log.collect{it[1]})
+    // ch_multiqc_files = ch_multiqc_files.mix(PORECHOP_PORECHOP.out.log)
 
     //
     // MODULE: Run filtlong
     //
     FILTLONG ( 
-        PORECHOP_PORECHOP.out.reads.map { meta, reads -> [ meta, [], reads ] } 
+        PORECHOP_PORECHOP.out.reads.map { meta, reads -> [ meta, [], reads ] }
+        // ch_samplesheet.map { meta, reads -> [ meta, [], reads ] }
     )
     ch_versions = ch_versions.mix(FILTLONG.out.versions)
+    // no collect: Not a valid path value type: java.util.LinkedHashMap
+    // ch_multiqc_files = ch_multiqc_files.mix(FILTLONG.out.log)
+    // With collect: filtlong multiqc module breaks
     // ch_multiqc_files = ch_multiqc_files.mix(FILTLONG.out.log.collect{it[1]})
 
     //
@@ -100,7 +108,7 @@ workflow NBKSIXTEENS {
     // MODULE: Run Minimap2 Align
     //
     MINIMAP2_ALIGN(
-        ch_samplesheet,
+        FILTLONG.out.reads,
         ch_minimap2_index,
         true,
         "bai",
@@ -108,14 +116,13 @@ workflow NBKSIXTEENS {
         false
     )
     ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions.first())
-    ch_host_reads = MINIMAP2_ALIGN.out.bam.map {meta,reads ->[meta,reads,[]]}
+    ch_host_reads = MINIMAP2_ALIGN.out.bam.map {meta, reads ->[meta, reads, []] }
 
     //
     // MODULE: Run Samtools view to extract unmapped reads
     //
     SAMTOOLS_VIEW (
-        ch_host_reads,[[],[]],[]
-        )
+        ch_host_reads, [[],[]], [] )
     ch_versions = ch_versions.mix(SAMTOOLS_VIEW.out.versions)
 
     //
@@ -127,6 +134,32 @@ workflow NBKSIXTEENS {
         )
     ch_versions = ch_versions.mix(SAMTOOLS_FASTQ.out.versions)
 
+    // 
+    // MODULE: Run Kraken2
+    //
+    KRAKEN2_KRAKEN2 (
+        SAMTOOLS_FASTQ.out.other,
+        params.kraken2_db,
+        false,
+        false
+    )
+    ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions.first())
+
+    //
+    // MODULE: Run KrakenTools kreport2krona
+    //
+    KRAKENTOOLS_KREPORT2KRONA (
+        KRAKEN2_KRAKEN2.out.report
+    )
+    ch_versions = ch_versions.mix(KRAKENTOOLS_KREPORT2KRONA.out.versions)
+
+    //
+    // MODULE: Run Krona ktimporttext
+    //
+    KRONA_KTIMPORTTEXT (
+        KRAKENTOOLS_KREPORT2KRONA.out.txt
+    )
+    ch_versions = ch_versions.mix(KRONA_KTIMPORTTEXT.out.versions)
 
     //
     // Collate and save software versions

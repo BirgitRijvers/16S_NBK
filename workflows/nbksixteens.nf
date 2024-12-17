@@ -4,22 +4,22 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-include { FASTQC                 } from '../modules/nf-core/fastqc/main'
-include { PORECHOP_PORECHOP } from '../modules/nf-core/porechop/porechop/main'
-include { NANOPLOT } from '../modules/nf-core/nanoplot/main'
-include { FILTLONG } from '../modules/nf-core/filtlong/main'
-include { MINIMAP2_INDEX } from '../modules/nf-core/minimap2/index/main'
-include { MINIMAP2_ALIGN   } from '../modules/nf-core/minimap2/align/main'
-include { SAMTOOLS_VIEW } from '../modules/nf-core/samtools/view/main'
-include { SAMTOOLS_FASTQ } from '../modules/nf-core/samtools/fastq/main'
-include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'
+include { FASTQC                    } from '../modules/nf-core/fastqc/main'
+include { PORECHOP_PORECHOP         } from '../modules/nf-core/porechop/porechop/main'
+include { NANOPLOT                  } from '../modules/nf-core/nanoplot/main'
+include { FILTLONG                  } from '../modules/nf-core/filtlong/main'
+include { MINIMAP2_INDEX            } from '../modules/nf-core/minimap2/index/main'
+include { MINIMAP2_ALIGN            } from '../modules/nf-core/minimap2/align/main'
+include { SAMTOOLS_VIEW             } from '../modules/nf-core/samtools/view/main'
+include { SAMTOOLS_FASTQ            } from '../modules/nf-core/samtools/fastq/main'
+include { KRAKEN2_KRAKEN2           } from '../modules/nf-core/kraken2/kraken2/main'
 include { KRAKENTOOLS_KREPORT2KRONA } from '../modules/nf-core/krakentools/kreport2krona/main'
-include { KRONA_KTIMPORTTEXT } from '../modules/nf-core/krona/ktimporttext/main'
-include { MULTIQC                } from '../modules/nf-core/multiqc/main'
-include { paramsSummaryMap       } from 'plugin/nf-validation'
-include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
-include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
-include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_nbksixteens_pipeline'
+include { KRONA_KTIMPORTTEXT        } from '../modules/nf-core/krona/ktimporttext/main'
+include { MULTIQC                   } from '../modules/nf-core/multiqc/main'
+include { paramsSummaryMap          } from 'plugin/nf-validation'
+include { paramsSummaryMultiqc      } from '../subworkflows/nf-core/utils_nfcore_pipeline'
+include { softwareVersionsToYAML    } from '../subworkflows/nf-core/utils_nfcore_pipeline'
+include { methodsDescriptionText    } from '../subworkflows/local/utils_nfcore_nbksixteens_pipeline'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -40,7 +40,8 @@ if(params.fasta){
 workflow NBKSIXTEENS {
 
     take:
-    ch_samplesheet // channel: samplesheet read in from --input
+    // channel: samplesheet read in from --input
+    ch_samplesheet
 
     main:
 
@@ -64,8 +65,7 @@ workflow NBKSIXTEENS {
     )
     ch_versions = ch_versions.mix(PORECHOP_PORECHOP.out.versions)
     ch_multiqc_files = ch_multiqc_files.mix(PORECHOP_PORECHOP.out.log.collect{it[1]})
-    // ch_multiqc_files = ch_multiqc_files.mix(PORECHOP_PORECHOP.out.log)
-
+    
     //
     // MODULE: Run filtlong
     //
@@ -74,9 +74,7 @@ workflow NBKSIXTEENS {
         // ch_samplesheet.map { meta, reads -> [ meta, [], reads ] }
     )
     ch_versions = ch_versions.mix(FILTLONG.out.versions)
-    // no collect: Not a valid path value type: java.util.LinkedHashMap
-    // ch_multiqc_files = ch_multiqc_files.mix(FILTLONG.out.log)
-    // With collect: filtlong multiqc module breaks
+    // throws error: Not a valid path value type: java.util.LinkedHashMap
     // ch_multiqc_files = ch_multiqc_files.mix(FILTLONG.out.log.collect{it[1]})
 
     //
@@ -86,12 +84,12 @@ workflow NBKSIXTEENS {
         FILTLONG.out.reads
     )
     ch_versions = ch_versions.mix(NANOPLOT.out.versions)
+    // Nanoplot is not compatible with MultiQC
 
-
-    // Check if minimap2 index is provided
+    // Check if Minimap2 index is provided
     if (!params.minimap2_index) {
         //
-        // MODULE: Run Minimap2 Index
+        // MODULE: Run Minimap2 index
         //
         MINIMAP2_INDEX(
             ch_fasta
@@ -100,12 +98,12 @@ workflow NBKSIXTEENS {
         ch_minimap2_index = MINIMAP2_INDEX.out.index
     }
     else {
-        // Use provided minimap2 index
+        // Use provided Minimap2 index if provided
         ch_minimap2_index = Channel.value([[id:'input_genome_index'], params.minimap2_index])
     }
 
     //
-    // MODULE: Run Minimap2 Align
+    // MODULE: Run Minimap2 align
     //
     MINIMAP2_ALIGN(
         FILTLONG.out.reads,
@@ -116,13 +114,24 @@ workflow NBKSIXTEENS {
         false
     )
     ch_versions = ch_versions.mix(MINIMAP2_ALIGN.out.versions.first())
+    // Create channel with mapping outputs, metadata and empty list for reference
     ch_host_reads = MINIMAP2_ALIGN.out.bam.map {meta, reads ->[meta, reads, []] }
+
+    // TO BE ADDED
+    // MODULE: Run Samtools stats to generate stats on mapping
+    //
+
 
     //
     // MODULE: Run Samtools view to extract unmapped reads
     //
     SAMTOOLS_VIEW (
-        ch_host_reads, [[],[]], [] )
+        ch_host_reads,
+        // Empty list for reference fasta and meta
+        [[],[]],
+        // Empty list for qname
+        []
+    )
     ch_versions = ch_versions.mix(SAMTOOLS_VIEW.out.versions)
 
     //
@@ -144,6 +153,7 @@ workflow NBKSIXTEENS {
         false
     )
     ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions.first())
+    // ch_multiqc_files = ch_multiqc_files.mix(KRAKEN2_KRAKEN2.out.report)
 
     //
     // MODULE: Run KrakenTools kreport2krona

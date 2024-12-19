@@ -1,74 +1,91 @@
 ## Introduction
 
-**EMC/nbksixteens** is a bioinformatics pipeline that ...
+**EMC/NBKsixteenS** is a bioinformatics pipeline designed for processing 16S sequences generated using Oxford Nanopore Technologies (ONT). The pipeline includes host depletion, making it suitable for experiments that use the Native Barcoding Kit (NBK) instead of ONT's dedicated 16S kit.
 
-<!-- TODO nf-core:
-   Complete this sentence with a 2-3 sentence summary of what types of data the pipeline ingests, a brief overview of the
-   major pipeline sections and the types of output it produces. You're giving an overview to someone new
-   to nf-core here, in 15-20 seconds. For an example, see https://github.com/nf-core/rnaseq/blob/master/README.md#introduction
--->
+As input it requires a samplesheet with paths to long read, compressed, FASTQ files. The pipeline performs quality control and trimming on the reads, filters out reads mapping to a specified host reference genome and taxonomically classifies the remaining reads.
 
 <!-- TODO nf-core: Include a figure that guides the user through the major workflow steps. Many nf-core
      workflows use the "tube map" design for that. See https://nf-co.re/docs/contributing/design_guidelines#examples for examples.   -->
 <!-- TODO nf-core: Fill in short bullet-pointed list of the default steps in the pipeline -->
 
-1. Read QC ([`FastQC`](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/))
-2. Present QC for raw reads ([`MultiQC`](http://multiqc.info/))
+NBKsisteenS includes:
+1. Raw read quality control ([`FastQC`](https://github.com/s-andrews/FastQC))
+2. Adapter trimming ([`Porechop`](https://github.com/rrwick/Porechop))
+3. Filtering by quality ([`Filtlong`](https://github.com/rrwick/Filtlong))
+4. Visualize QC'ed data ([`NanoPlot`](https://github.com/wdecoster/NanoPlot))
+5. Filter out reads mapping to a reference genome ([`minimap2`](https://github.com/lh3/minimap2) and [`Samtools`](https://www.htslib.org/doc/samtools-view.html))
+6. Convert SAM file to FASTQ ([`Samtools`](https://www.htslib.org/doc/samtools-fasta.html))
+7. Taxonomic classification ([`Kraken2`](https://github.com/DerrickWood/kraken2))
+8. Generate report with quality metrics and used tools ([`MultiQC`](https://github.com/MultiQC/MultiQC))
+
+To be added:
+- Summarize mapping statistics ([`Samtools`](https://www.htslib.org/doc/samtools-flagstat.html))
+- Visualize Kraken2 output with Krona ([`KrakenTools`](https://github.com/jenniferlu717/KrakenTools) and [`Krona`](https://github.com/marbl/Krona))
+- Re-estimation of microbial abundances ([`Bracken`](https://github.com/jenniferlu717/Bracken))
 
 ## Usage
-
+To use NBKsixteenS on your machine, follow the steps below:
+1. Make sure you have correctly set-up Nextflow and it's dependencies
 > [!NOTE]
-> If you are new to Nextflow and nf-core, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set-up Nextflow. Make sure to [test your setup](https://nf-co.re/docs/usage/introduction#how-to-run-a-pipeline) with `-profile test` before running the workflow on actual data.
+> If you are new to Nextflow and nf-core, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set-up Nextflow. 
 
-<!-- TODO nf-core: Describe the minimum required steps to execute the pipeline, e.g. how to prepare samplesheets.
-     Explain what rows and columns represent. For instance (please edit as appropriate):
-
-First, prepare a samplesheet with your input data that looks as follows:
-
-`samplesheet.csv`:
-
-```csv
-sample,fastq_1,fastq_2
-CONTROL_REP1,AEG588A1_S1_L002_R1_001.fastq.gz,AEG588A1_S1_L002_R2_001.fastq.gz
-```
-
-Each row represents a fastq file (single-end) or a pair of fastq files (paired end).
-
+2. Clone this GitHub repository
+3. Prepare a samplesheet like the example below:
+    `samplesheet.csv`:
+    ```csv
+    sample,fastq_1
+    CONTROL_1,BR_PVP_0705.fastq.gz
+    ```
+    Each row represents a fastq file.
+<!-- 
+> [!TIP]
+> If you don't have data available yet, or you want to test the pipeline first on a small dataset, use the [data that comes with this repo](https://github.com/BirgitRijvers/EMC-MetaMicrobes/tree/master/testdata). This data is subsampled from 3 RNA-seq samples with varying host contents, created by Marques *et al.* .
 -->
 
-Now, you can run the pipeline using:
+> [!TIP]
+> You can use the ["samplesheeter.py"](https://github.com/BirgitRijvers/EMC-MetaMicrobes/tree/master/samplesheeter) script that comes with another repo, a small command line tool that prepares the samplesheet for you based on a supplied data directory.
 
-<!-- TODO nf-core: update the following command to include all required parameters for a minimal example -->
+   <!-- TODO nf-core: Add documentation about samplesheeter and testdata -->
+4. Download a FASTA file containing the reference genome you want to use for host depletion, for example [GRCh38](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000001405.26/). 
 
-```bash
-nextflow run EMC/nbksixteens \
-   -profile <docker/singularity/.../institute> \
-   --input samplesheet.csv \
-   --outdir <OUTDIR>
-```
+Optionally, create a minimap2 index of this reference file and build your preferred Kraken2/Bracken database. If you don't supply these to the pipeline, NBKsixteenS will index your reference genome for you and build the Kraken2/Bracken standard database. 
+
+4. Now, you can run the NBKsixteenS pipeline using:
+   
+    ```bash
+    nextflow run <path/to/EMC-NBKsixteenS/directory/> \
+       -profile <docker/singularity/conda/.../institute> \
+       --input samplesheet.csv \
+       --outdir <OUTDIR> \
+       --fasta <path/to/reference_genome_fasta>
+    ```
+    
+    If you have a pre-built minimap2 index or Kraken2/Bracken database, use a command like this:
+      
+      ```bash
+      nextflow run <path/to/EMC-NBKsixteenS/directory/> \
+         -profile <docker/singularity/conda/.../institute> \
+         --input samplesheet.csv \
+         --outdir <OUTDIR> \
+         --fasta <path/to/reference_genome_fasta> \
+         --minimap2_index <path/to/bwa_mem2_index> \
+         --kraken2_db <path/to/kraken2_db> \
+         --bracken_db <path/to/bracken_db>
+      ```  
 
 > [!WARNING]
-> Please provide pipeline parameters via the CLI or Nextflow `-params-file` option. Custom config files including those provided by the `-c` Nextflow option can be used to provide any configuration _**except for parameters**_;
+> Please provide pipeline parameters via the CLI or Nextflow `-params-file` option.
 > see [docs](https://nf-co.re/usage/configuration#custom-configuration-files).
 
 ## Credits
 
 EMC/nbksixteens was originally written by BirgitRijvers.
 
-We thank the following people for their extensive assistance in the development of this pipeline:
+## Support
 
-<!-- TODO nf-core: If applicable, make list of people who have also contributed -->
-
-## Contributions and Support
-
-If you would like to contribute to this pipeline, please see the [contributing guidelines](.github/CONTRIBUTING.md).
+Please open an issue in this repository if you experience problems or have development suggestions.
 
 ## Citations
-
-<!-- TODO nf-core: Add citation for pipeline after first release. Uncomment lines below and update Zenodo doi and badge at the top of this file. -->
-<!-- If you use EMC/nbksixteens for your analysis, please cite it using the following doi: [10.5281/zenodo.XXXXXX](https://doi.org/10.5281/zenodo.XXXXXX) -->
-
-<!-- TODO nf-core: Add bibliography of tools and data used in your pipeline -->
 
 An extensive list of references for the tools used by the pipeline can be found in the [`CITATIONS.md`](CITATIONS.md) file.
 
